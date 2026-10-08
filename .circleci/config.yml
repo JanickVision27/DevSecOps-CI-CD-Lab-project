@@ -4,8 +4,15 @@ version: 2.1
 # Mirrors the GitHub Actions pipeline: Build & Test -> Trivy fs scan -> Docker build -> Trivy image scan
 # (CodeQL stays in GitHub Actions - it is a GitHub-native product whose results live in the Security tab)
 #
-# Note: uses only Docker executors so it runs on the CircleCI free plan
-# (the 'machine' executor requires a paid plan).
+# Notes:
+# - Uses only Docker executors so it runs on the CircleCI free plan
+#   (the 'machine' executor requires a paid plan).
+# - Hardened against Maven Central rate limiting (HTTP 429):
+#   * the Maven cache (~/.m2) saved by build-and-test is restored before the
+#     Trivy fs scan, so Trivy resolves dependencies locally instead of
+#     flooding repo.maven.apache.org with requests
+#   * scanning jobs run sequentially, not in parallel, so requests are
+#     not compounded
 
 jobs:
   # ---- Job 1: Build & Test (same as the GitHub Actions 'build' job) ----
@@ -29,11 +36,20 @@ jobs:
           path: target/surefire-reports
 
   # ---- Job 2: Trivy filesystem scan of source code ----
+  # Runs on the JDK image and restores the Maven cache from the build job so
+  # Trivy can resolve Maven dependencies from ~/.m2 instead of Maven Central.
   trivy-source-scan:
     docker:
-      - image: cimg/base:current
+      - image: cimg/openjdk:17.0
     steps:
       - checkout
+      - restore_cache:
+          keys:
+            - maven-deps-{{ checksum "pom.xml" }}
+            - maven-deps-
+      - run:
+          name: Verify Maven dependencies are cached locally
+          command: mvn -B -q dependency:resolve
       - run:
           name: Install Trivy
           command: |
@@ -71,6 +87,8 @@ workflows:
       - trivy-source-scan:
           requires:
             - build-and-test
+      # Serialized after the fs scan so the two Trivy scans never hit
+      # Maven Central at the same time (avoids compounding rate limits).
       - docker-build-and-image-scan:
           requires:
-            - build-and-test
+            - trivy-source-scan
