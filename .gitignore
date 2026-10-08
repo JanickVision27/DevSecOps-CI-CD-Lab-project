@@ -1,0 +1,18 @@
+# Maven build output
+target/
+
+# Eclipse / IDE artifacts
+bin/
+.project
+.classpath
+.settings/
+.idea/
+*.iml
+.vscode/
+
+# Compiled class files
+*.class
+
+# Logs and OS files
+*.log
+.DS_Store
