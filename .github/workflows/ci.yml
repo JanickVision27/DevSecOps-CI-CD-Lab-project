@@ -62,7 +62,7 @@ jobs:
 
       # Scan source code for vulnerabilities
       - name: Trivy fs scan (source code)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -78,7 +78,7 @@ jobs:
 
       # Scan the built image for vulnerabilities
       - name: Trivy image scan (container)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'devsecops-lab:latest'
           scan-type: 'image'
