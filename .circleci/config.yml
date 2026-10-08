@@ -1,0 +1,68 @@
+version: 2.1
+
+# DevSecOps CI/CD Lab - CircleCI pipeline
+# Mirrors the GitHub Actions pipeline: Build & Test -> Trivy fs scan -> Docker build -> Trivy image scan
+# (CodeQL stays in GitHub Actions - it is a GitHub-native product whose results live in the Security tab)
+
+jobs:
+  # ---- Job 1: Build & Test (same as the GitHub Actions 'build' job) ----
+  build-and-test:
+    docker:
+      - image: cimg/openjdk:17.0
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - maven-deps-{{ checksum "pom.xml" }}
+            - maven-deps-
+      - run:
+          name: Build and test with Maven
+          command: mvn -B package
+      - save_cache:
+          key: maven-deps-{{ checksum "pom.xml" }}
+          paths:
+            - ~/.m2
+      - store_test_results:
+          path: target/surefire-reports
+
+  # ---- Job 2: Trivy filesystem scan of source code ----
+  trivy-source-scan:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - checkout
+      - run:
+          name: Install Trivy
+          command: |
+            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /tmp/trivy-bin
+      - run:
+          name: Trivy fs scan (source code)
+          command: /tmp/trivy-bin/trivy fs --exit-code 0 --format table .
+
+  # ---- Job 3: Build Docker image, then scan it ----
+  docker-build-and-image-scan:
+    machine:
+      image: ubuntu-2404:current
+    steps:
+      - checkout
+      - run:
+          name: Build Docker image
+          command: docker build -t devsecops-lab:latest .
+      - run:
+          name: Install Trivy
+          command: |
+            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
+      - run:
+          name: Trivy image scan (container)
+          command: trivy image --exit-code 0 --format table devsecops-lab:latest
+
+workflows:
+  devsecops-pipeline:
+    jobs:
+      - build-and-test
+      - trivy-source-scan:
+          requires:
+            - build-and-test
+      - docker-build-and-image-scan:
+          requires:
+            - build-and-test
