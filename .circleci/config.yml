@@ -3,6 +3,9 @@ version: 2.1
 # DevSecOps CI/CD Lab - CircleCI pipeline
 # Mirrors the GitHub Actions pipeline: Build & Test -> Trivy fs scan -> Docker build -> Trivy image scan
 # (CodeQL stays in GitHub Actions - it is a GitHub-native product whose results live in the Security tab)
+#
+# Note: uses only Docker executors so it runs on the CircleCI free plan
+# (the 'machine' executor requires a paid plan).
 
 jobs:
   # ---- Job 1: Build & Test (same as the GitHub Actions 'build' job) ----
@@ -40,21 +43,26 @@ jobs:
           command: /tmp/trivy-bin/trivy fs --exit-code 0 --format table .
 
   # ---- Job 3: Build Docker image, then scan it ----
+  # Free-plan compatible: Docker executor + setup_remote_docker instead of a machine VM.
   docker-build-and-image-scan:
-    machine:
-      image: ubuntu-2404:current
+    docker:
+      - image: cimg/base:current
     steps:
       - checkout
+      - setup_remote_docker
       - run:
           name: Build Docker image
           command: docker build -t devsecops-lab:latest .
+      - run:
+          name: Export image for scanning
+          command: docker save -o /tmp/app-image.tar devsecops-lab:latest
       - run:
           name: Install Trivy
           command: |
             curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
       - run:
           name: Trivy image scan (container)
-          command: trivy image --exit-code 0 --format table devsecops-lab:latest
+          command: trivy image --input /tmp/app-image.tar --exit-code 0 --format table
 
 workflows:
   devsecops-pipeline:
